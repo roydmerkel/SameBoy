@@ -59,45 +59,67 @@ ifeq ($(MAKECMDGOALS),)
 MAKECMDGOALS := $(DEFAULT)
 endif
 
+LIBRETRO_CPPP_FLAGS = 
+LIBRETRO_CFLAGS = 
 ifneq ($(DISABLE_TIMEKEEPING),)
-CFLAGS += -DGB_DISABLE_TIMEKEEPING
-CPPP_FLAGS += -DGB_DISABLE_TIMEKEEPING
-else
+CFLAGS += -UGB_DISABLE_TIMEKEEPING
 CPPP_FLAGS += -UGB_DISABLE_TIMEKEEPING
+LIBRETRO_CPPP_FLAGS += -UGB_DISABLE_TIMEKEEPING
+LIBRETRO_CFLAGS += -UGB_DISABLE_TIMEKEEPING
+else
+CPPP_FLAGS += -DGB_DISABLE_TIMEKEEPING
+LIBRETRO_CPPP_FLAGS += -DGB_DISABLE_TIMEKEEPING
+LIBRETRO_CFLAGS += -DGB_DISABLE_TIMEKEEPING
 endif
 
 ifneq ($(DISABLE_REWIND),)
-CFLAGS += -DGB_DISABLE_REWIND
-CPPP_FLAGS += -DGB_DISABLE_REWIND
-CORE_FILTER += Core/rewind.c
-else
+CFLAGS += -UGB_DISABLE_REWIND
 CPPP_FLAGS += -UGB_DISABLE_REWIND
+CORE_FILTER += Core/rewind.c
+LIBRETRO_CPPP_FLAGS += -UGB_DISABLE_REWIND
+LIBRETRO_CFLAGS += -UGB_DISABLE_REWIND
+else
+CPPP_FLAGS += -DGB_DISABLE_REWIND
+LIBRETRO_CPPP_FLAGS += -DGB_DISABLE_REWIND
+LIBRETRO_CFLAGS += -DGB_DISABLE_REWIND
 endif
 
 ifneq ($(DISABLE_DEBUGGER),)
-CFLAGS += -DGB_DISABLE_DEBUGGER
-CPPP_FLAGS += -DGB_DISABLE_DEBUGGER
+CFLAGS += -UGB_DISABLE_DEBUGGER
+CPPP_FLAGS += -UGB_DISABLE_DEBUGGER
 CORE_FILTER += Core/debugger.c Core/sm83_disassembler.c Core/symbol_hash.c
 DISABLE_CHEAT_SEARCH := 1
+LIBRETRO_CPPP_FLAGS += -UGB_DISABLE_DEBUGGER
+LIBRETRO_CFLAGS += -UGB_DISABLE_DEBUGGER
 else
-CPPP_FLAGS += -UGB_DISABLE_DEBUGGER
+CPPP_FLAGS += -DGB_DISABLE_DEBUGGER
+LIBRETRO_CPPP_FLAGS += -DGB_DISABLE_DEBUGGER
+LIBRETRO_CFLAGS += -DGB_DISABLE_DEBUGGER
 endif
 
 ifneq ($(DISABLE_CHEATS),)
-CFLAGS += -DGB_DISABLE_CHEATS
-CPPP_FLAGS += -DGB_DISABLE_CHEATS
+CFLAGS += -UGB_DISABLE_CHEATS
+CPPP_FLAGS += -UGB_DISABLE_CHEATS
 CORE_FILTER += Core/cheats.c
 DISABLE_CHEAT_SEARCH := 1
+LIBRETRO_CPPP_FLAGS += -UGB_DISABLE_CHEATS
+LIBRETRO_CFLAGS += -UGB_DISABLE_CHEATS
 else
-CPPP_FLAGS += -UGB_DISABLE_CHEATS
+CPPP_FLAGS += -DGB_DISABLE_CHEATS
+LIBRETRO_CPPP_FLAGS += -DGB_DISABLE_CHEATS
+LIBRETRO_CFLAGS += -DGB_DISABLE_CHEATS
 endif
 
 ifneq ($(DISABLE_CHEAT_SEARCH),)
-CFLAGS += -DGB_DISABLE_CHEAT_SEARCH
-CPPP_FLAGS += -DGB_DISABLE_CHEAT_SEARCH
-CORE_FILTER += Core/cheat_search.c
-else
+CFLAGS += -UGB_DISABLE_CHEAT_SEARCH
 CPPP_FLAGS += -UGB_DISABLE_CHEAT_SEARCH
+CORE_FILTER += Core/cheat_search.c
+LIBRETRO_CPPP_FLAGS += -UGB_DISABLE_CHEAT_SEARCH
+LIBRETRO_CFLAGS += -UGB_DISABLE_CHEAT_SEARCH
+else
+CPPP_FLAGS += -DGB_DISABLE_CHEAT_SEARCH
+LIBRETRO_CPPP_FLAGS += -DGB_DISABLE_CHEAT_SEARCH
+LIBRETRO_CFLAGS += -DGB_DISABLE_CHEAT_SEARCH
 endif
 
 CPPP_FLAGS += -UGB_INTERNAL
@@ -148,8 +170,26 @@ endif
 ifeq ($(PLATFORM),windows32)
 # To force use of the Unix version instead of the Windows version
 MKDIR := $(shell which mkdir)
+RM := $(shell which rm)
+LS := $(shell which ls)
+CP := $(shell which cp)
+ifeq ($(findstring cmd.exe,$(SHELL)),cmd.exe)
+IN_CMD_EXE := 1
+else ifdef ComSpec
+ifeq ($(findstring cmd.exe,$(ComSpec)),cmd.exe)
+IN_CMD_EXE := 1
+else
+IN_CMD_EXE := 0
+endif
+else
+IN_CMD_EXE := 0
+endif
 else
 MKDIR := mkdir
+RM := rm
+LS := ls
+CP := cp
+IN_CMD_EXE := 0
 endif
 
 ifeq ($(CONF),native_release)
@@ -172,9 +212,17 @@ RGBLINK := $(RGBDS)rgblink
 RGBGFX  := $(RGBDS)rgbgfx
 
 # RGBASM 0.7+ deprecated and remove `-h`
+ifeq ($(IN_CMD_EXE),1)
+RGBASM_FLAGS := $(if $(filter $(shell echo "println __RGBDS_MAJOR__ ^|^| (^!__RGBDS_MAJOR__ ^&^& __RGBDS_MINOR__ ^> 6)" | $(RGBASM) - 2> $(NULL)), $$0), -h,) --include $(OBJ)/BootROMs/ --include BootROMs/
+else
 RGBASM_FLAGS := $(if $(filter $(shell echo 'println __RGBDS_MAJOR__ || (!__RGBDS_MAJOR__ && __RGBDS_MINOR__ > 6)' | $(RGBASM) - 2> $(NULL)), $$0), -h,) --include $(OBJ)/BootROMs/ --include BootROMs/
+endif
 # RGBGFX 0.6+ replace `-h` with `-Z`, and need `-c embedded`
+ifeq ($(IN_CMD_EXE),1)
+RGBGFX_FLAGS := $(if $(filter $(shell echo "println __RGBDS_MAJOR__ ^|^| (^!__RGBDS_MAJOR__ ^&^& __RGBDS_MINOR__ ^> 5)" | $(RGBASM) - 2> $(NULL)), $$0), -h -u, -Z -u -c embedded)
+else
 RGBGFX_FLAGS := $(if $(filter $(shell echo 'println __RGBDS_MAJOR__ || (!__RGBDS_MAJOR__ && __RGBDS_MINOR__ > 5)' | $(RGBASM) - 2> $(NULL)), $$0), -h -u, -Z -u -c embedded)
+endif
 
 
 # Set compilation and linkage flags based on target, platform and configuration
@@ -207,6 +255,10 @@ endif
 # GCC's implementation of this warning has false positives, so we skip it
 ifneq ($(shell $(CC) --version 2>&1 | grep "gcc"), )
 WARNINGS += -Wno-maybe-uninitialized
+endif
+
+ifeq ($(PLATFORM),windows32)
+WARNINGS += -Wno-deprecated-declarations
 endif
 
 CFLAGS += $(WARNINGS)
@@ -548,11 +600,11 @@ $(BIN)/SameBoy-iOS.app: $(BIN)/SameBoy-iOS.app/SameBoy \
 						$(BIN)/SameBoy-iOS.app/LaunchScreen.storyboardc \
                         Shaders
 	$(MKDIR) -p $(BIN)/SameBoy-iOS.app
-	cp $(IOS_PNGS) $(BIN)/SameBoy-iOS.app
+	$(CP) $(IOS_PNGS) $(BIN)/SameBoy-iOS.app
 	sed "s/@VERSION/$(VERSION)/;s/@COPYRIGHT_YEAR/$(COPYRIGHT_YEAR)/" < iOS/Info.plist > $(BIN)/SameBoy-iOS.app/Info.plist
 	sed "s/@COPYRIGHT_YEAR/$(COPYRIGHT_YEAR)/" < iOS/License.html > $(BIN)/SameBoy-iOS.app/License.html
 	$(MKDIR) -p $(BIN)/SameBoy-iOS.app/Shaders
-	cp Shaders/*.fsh Shaders/*.metal $(BIN)/SameBoy-iOS.app/Shaders
+	$(CP) Shaders/*.fsh Shaders/*.metal $(BIN)/SameBoy-iOS.app/Shaders
 	$(CODESIGN) $@
 
 $(BIN)/SameBoy-iOS.app/SameBoy: $(CORE_OBJECTS) $(IOS_OBJECTS)
@@ -567,6 +619,26 @@ $(OBJ)/installer: iOS/installer.m
 
 # Cocoa Port
 
+ifeq ($(IN_CMD_EXE),1)
+$(BIN)/SameBoy.app: $(BIN)/SameBoy.app/Contents/MacOS/SameBoy \
+                    $(shell ls Cocoa/*.icns Cocoa/*.png Cocoa/*.car) \
+                    Cocoa/License.html \
+                    Cocoa/Info.plist \
+                    Cocoa/SameBoy.entitlements \
+                    Misc/registers.sym \
+                    $(BIN)/SameBoy.app/Contents/Resources/dmg_boot.bin \
+                    $(BIN)/SameBoy.app/Contents/Resources/mgb_boot.bin \
+                    $(BIN)/SameBoy.app/Contents/Resources/cgb0_boot.bin \
+                    $(BIN)/SameBoy.app/Contents/Resources/cgb_boot.bin \
+                    $(BIN)/SameBoy.app/Contents/Resources/agb_boot.bin \
+                    $(BIN)/SameBoy.app/Contents/Resources/sgb_boot.bin \
+                    $(BIN)/SameBoy.app/Contents/Resources/sgb2_boot.bin \
+                    $(patsubst %.xib,%.nib,$(addprefix $(BIN)/SameBoy.app/Contents/Resources/,$(shell cd Cocoa & ls *.xib))) \
+                    $(BIN)/SameBoy.app/Contents/Library/QuickLook/SameBoy.qlgenerator \
+					$(BIN)/SameBoy.app/Contents/PlugIns/Thumbnailer.appex \
+					$(BIN)/SameBoy.app/Contents/PlugIns/Previewer.appex \
+                    Shaders
+else
 $(BIN)/SameBoy.app: $(BIN)/SameBoy.app/Contents/MacOS/SameBoy \
                     $(shell ls Cocoa/*.icns Cocoa/*.png Cocoa/*.car) \
                     Cocoa/License.html \
@@ -585,12 +657,13 @@ $(BIN)/SameBoy.app: $(BIN)/SameBoy.app/Contents/MacOS/SameBoy \
 					$(BIN)/SameBoy.app/Contents/PlugIns/Thumbnailer.appex \
 					$(BIN)/SameBoy.app/Contents/PlugIns/Previewer.appex \
                     Shaders
+endif
 	$(MKDIR) -p $(BIN)/SameBoy.app/Contents/Resources
-	cp Cocoa/*.icns Cocoa/*.png Cocoa/*.car Misc/registers.sym $(BIN)/SameBoy.app/Contents/Resources/
+	$(CP) Cocoa/*.icns Cocoa/*.png Cocoa/*.car Misc/registers.sym $(BIN)/SameBoy.app/Contents/Resources/
 	sed "s/@VERSION/$(VERSION)/;s/@COPYRIGHT_YEAR/$(COPYRIGHT_YEAR)/" < Cocoa/Info.plist > $(BIN)/SameBoy.app/Contents/Info.plist
 	sed "s/@COPYRIGHT_YEAR/$(COPYRIGHT_YEAR)/" < Cocoa/License.html > $(BIN)/SameBoy.app/Contents/Resources/Credits.html
 	$(MKDIR) -p $(BIN)/SameBoy.app/Contents/Resources/Shaders
-	cp Shaders/*.fsh Shaders/*.metal $(BIN)/SameBoy.app/Contents/Resources/Shaders
+	$(CP) Shaders/*.fsh Shaders/*.metal $(BIN)/SameBoy.app/Contents/Resources/Shaders
 	$(MKDIR) -p $(BIN)/SameBoy.app/Contents/Library/QuickLook/
 	$(CODESIGN) $@ --entitlements Cocoa/SameBoy.entitlements
 
@@ -609,14 +682,14 @@ ifeq ($(CONF), release)
 endif
 
 $(BIN)/SameBoy.app/Contents/Resources/%.nib: Cocoa/%.xib
-	-@rm -rf $@
+	-@$(RM) -rf $@
 	$(IBTOOL) --target-device mac --minimum-deployment-target 10.9 --compile $@ $^ 2>&1 | cat -
-	@ls $@ 2> /dev/null
+	@$(LS) $@ 2> /dev/null
 	
 $(BIN)/SameBoy-iOS.app/%.storyboardc: iOS/%.storyboard
-	-@rm -rf $@
+	-@$(RM) -rf $@
 	$(IBTOOL) --target-device iphone --target-device ipad --minimum-deployment-target $(IOS_MIN) --compile $@ $^ 2>&1 | cat -
-	@ls $@ 2> /dev/null
+	@$(LS) $@ 2> /dev/null
 
 # Quick Look generators
 
@@ -625,7 +698,7 @@ $(BIN)/SameBoy.app/Contents/Library/QuickLook/SameBoy.qlgenerator: $(BIN)/SameBo
 										                           QuickLook/Info.plist \
 										                           $(BIN)/SameBoy.app/Contents/Library/QuickLook/SameBoy.qlgenerator/Contents/Resources/cgb_boot_fast.bin
 	$(MKDIR) -p $(BIN)/SameBoy.app/Contents/Library/QuickLook/SameBoy.qlgenerator/Contents/Resources
-	cp QuickLook/*.png $(BIN)/SameBoy.app/Contents/Library/QuickLook/SameBoy.qlgenerator/Contents/Resources/
+	$(CP) QuickLook/*.png $(BIN)/SameBoy.app/Contents/Library/QuickLook/SameBoy.qlgenerator/Contents/Resources/
 	sed "s/@VERSION/$(VERSION)/;s/@COPYRIGHT_YEAR/$(COPYRIGHT_YEAR)/" < QuickLook/Info.plist > $(BIN)/SameBoy.app/Contents/Library/QuickLook/SameBoy.qlgenerator/Contents/Info.plist
 ifeq ($(CONF), release)
 	$(CODESIGN) $@
@@ -668,7 +741,7 @@ endif
 # boot ROM directory.
 $(BIN)/SameBoy.app/Contents/Library/QuickLook/SameBoy.qlgenerator/Contents/Resources/cgb_boot_fast.bin: $(BIN)/BootROMs/cgb_boot_fast.bin
 	-@$(MKDIR) -p $(dir $@)
-	cp -f $^ $@
+	$(CP) -f $^ $@
 
 # XDG thumbnailer
 
@@ -719,8 +792,9 @@ endif
 # Copy required DLL files for the Windows port
 $(BIN)/SDL/%.dll:
 	-@$(MKDIR) -p $(dir $@)
-	@$(eval MATCH := $(shell where "$(lib)":$(notdir $@)))
-	cp "$(MATCH)" $@
+	@$(eval MATCH := $(shell where "$(LIB)":$(notdir $@)))
+	$(info MATCH := $(shell where "$(LIB)":$(notdir $@)))
+	$(CP) "$(MATCH)" $@
 
 # Tester
 
@@ -732,25 +806,25 @@ ifeq ($(CONF), release)
 	$(CODESIGN) $@
 endif
 
-$(BIN)/tester/sameboy_tester.exe: $(CORE_OBJECTS)
+$(BIN)/tester/sameboy_tester.exe: $(CORE_OBJECTS) $(TESTER_OBJECTS)
 	-@$(MKDIR) -p $(dir $@)
 	$(CC) $^ -o $@ $(LDFLAGS) -Wl,/subsystem:console
 
 $(BIN)/tester/%.bin: $(BOOTROMS_DIR)/%.bin
 	-@$(MKDIR) -p $(dir $@)
-	cp -f $< $@
+	$(CP) -f $< $@
 
 $(BIN)/SameBoy.app/Contents/Resources/%.bin: $(BOOTROMS_DIR)/%.bin
 	-@$(MKDIR) -p $(dir $@)
-	cp -f $< $@
+	$(CP) -f $< $@
 
 $(BIN)/SameBoy-iOS.app/%.bin: $(BOOTROMS_DIR)/%.bin
 	-@$(MKDIR) -p $(dir $@)
-	cp -f $< $@
+	$(CP) -f $< $@
 
 $(BIN)/SDL/%.bin: $(BOOTROMS_DIR)/%.bin
 	-@$(MKDIR) -p $(dir $@)
-	cp -f $< $@
+	$(CP) -f $< $@
 
 $(BIN)/SDL/LICENSE: LICENSE
 	-@$(MKDIR) -p $(dir $@)
@@ -758,20 +832,20 @@ $(BIN)/SDL/LICENSE: LICENSE
 
 $(BIN)/SDL/registers.sym: Misc/registers.sym
 	-@$(MKDIR) -p $(dir $@)
-	cp -f $< $@
+	$(CP) -f $< $@
 
 $(BIN)/SDL/background.bmp: SDL/background.bmp
 	-@$(MKDIR) -p $(dir $@)
-	cp -f $< $@
+	$(CP) -f $< $@
 
 $(BIN)/SDL/Shaders: $(wildcard Shaders/*.fsh)
 	-@$(MKDIR) -p $@
-	cp -f $^ $@
+	$(CP) -f $^ $@
 	touch $@
 
 $(BIN)/SDL/Palettes: Misc/Palettes
 	-@$(MKDIR) -p $@
-	cp -f $</* $@
+	$(CP) -f $</* $@
 	touch $@
 
 # Boot ROMs
@@ -797,11 +871,15 @@ $(BIN)/BootROMs/%.bin: BootROMs/%.asm $(OBJ)/BootROMs/SameBoyLogo.pb12
 	-@$(MKDIR) -p $(dir $@)
 	$(RGBASM) $(RGBASM_FLAGS) -o $@.tmp $<
 	$(RGBLINK) -x -o $@ $@.tmp
-	@rm $@.tmp
+	@$(RM) $@.tmp
 
 # Libretro Core (uses its own build system)
 libretro:
-	CC=$(CC) CFLAGS="$(WARNINGS)" $(MAKE) -C libretro BOOTROMS_DIR=$(abspath $(BOOTROMS_DIR)) BIN=$(abspath $(BIN))
+ifeq ($(IN_CMD_EXE),1)
+	$(MAKE) CC=$(CC) CFLAGS="$(WARNINGS)  -DGB_VERSION=\\\""$(VERSION)"\\\" -DGB_COPYRIGHT_YEAR=\\\""$(COPYRIGHT_YEAR)"\\\" $(LIBRETRO_CFLAGS) -I.. -I. -D_USE_MATH_DEFINES -I../Windows" CPPP_FLAGS="$(LIBRETRO_CPPP_FLAGS)" -C libretro BOOTROMS_DIR=$(abspath $(BOOTROMS_DIR)) BIN=$(abspath $(BIN)) IN_CMD_EXE=$(IN_CMD_EXE)
+else
+	CC=$(CC) CFLAGS="$(WARNINGS) $(LIBRETRO_CFLAGS)" CPPP_FLAGS="$(LIBRETRO_CPPP_FLAGS)" $(MAKE) -C libretro BOOTROMS_DIR=$(abspath $(BOOTROMS_DIR)) BIN=$(abspath $(BIN)) IN_CMD_EXE=$(IN_CMD_EXE) 
+endif
 
 # Install for Linux, and other FreeDesktop platforms.
 ifneq ($(FREEDESKTOP),)
@@ -844,10 +922,10 @@ ios: bootroms
 
 $(BIN)/SameBoy-iOS.ipa: ios iOS/sideload.entitlements
 	$(MKDIR) -p $(OBJ)/Payload
-	cp -rf $(BIN)/SameBoy-iOS.app $(OBJ)/Payload/SameBoy-iOS.app
+	$(CP) -rf $(BIN)/SameBoy-iOS.app $(OBJ)/Payload/SameBoy-iOS.app
 	codesign -fs - --entitlements iOS/sideload.entitlements $(OBJ)/Payload/SameBoy-iOS.app
 	(cd $(OBJ) && zip -q $(abspath $@) -r Payload)
-	rm -rf $(OBJ)/Payload
+	$(RM) -rf $(OBJ)/Payload
 
 
 $(BIN)/SameBoy-iOS.deb: $(OBJ)/debian-binary $(OBJ)/control.tar.gz $(OBJ)/data.tar.gz
@@ -856,12 +934,12 @@ $(BIN)/SameBoy-iOS.deb: $(OBJ)/debian-binary $(OBJ)/control.tar.gz $(OBJ)/data.t
 	
 $(OBJ)/data.tar.gz: ios iOS/jailbreak.entitlements iOS/installer.entitlements
 	$(MKDIR) -p $(OBJ)/private/var/containers/
-	cp -rf $(BIN)/SameBoy-iOS.app $(OBJ)/private/var/containers/SameBoy-iOS.app
-	cp build/obj-ios/installer $(OBJ)/private/var/containers/SameBoy-iOS.app
+	$(CP) -rf $(BIN)/SameBoy-iOS.app $(OBJ)/private/var/containers/SameBoy-iOS.app
+	$(CP) build/obj-ios/installer $(OBJ)/private/var/containers/SameBoy-iOS.app
 	codesign -fs - --entitlements iOS/installer.entitlements $(OBJ)/private/var/containers/SameBoy-iOS.app/installer
 	codesign -fs - --entitlements iOS/jailbreak.entitlements $(OBJ)/private/var/containers/SameBoy-iOS.app
 	(cd $(OBJ) && tar -czf $(abspath $@) --format ustar --uid 501 --gid 501 --numeric-owner ./private)
-	rm -rf $(OBJ)/private/
+	$(RM) -rf $(OBJ)/private/
 	
 $(OBJ)/control.tar.gz: iOS/deb-postinst iOS/deb-prerm iOS/deb-control
 	-@$(MKDIR) -p $(dir $@)
@@ -869,7 +947,7 @@ $(OBJ)/control.tar.gz: iOS/deb-postinst iOS/deb-prerm iOS/deb-control
 	ln iOS/deb-postinst $(OBJ)/postinst
 	ln iOS/deb-prerm $(OBJ)/prerm
 	(cd $(OBJ) && tar -czf $(abspath $@) --format ustar --uid 501 --gid 501 --numeric-owner ./control ./postinst ./prerm)
-	rm $(OBJ)/control $(OBJ)/postinst $(OBJ)/prerm
+	$(RM) $(OBJ)/control $(OBJ)/postinst $(OBJ)/prerm
 	
 $(OBJ)/debian-binary:
 	-@$(MKDIR) -p $(dir $@)
@@ -881,11 +959,11 @@ $(LIBDIR)/libsameboy.o: $(CORE_OBJECTS)
 	echo "static const char __attribute__((used)) x=0;"| $(CC) $(filter-out -flto,$(CFLAGS)) $(FAT_FLAGS) -c -x c - -o $(OBJ)/lto_hack.o
 	@# And this is a somewhat complicated hack to invoke the correct LTO-enabled LD command in a mostly cross-platform nature
 	$(CC) $(FAT_FLAGS) $(CFLAGS) $(LIBFLAGS) $^ $(OBJ)/lto_hack.o -o $@
-	-@rm $(OBJ)/lto_hack.o
+	-@$(RM) $(OBJ)/lto_hack.o
     
 $(LIBDIR)/libsameboy.a: $(LIBDIR)/libsameboy.o
 	-@$(MKDIR) -p $(dir $@)
-	-@rm -f $@
+	-@$(RM) -f $@
 	ar -crs $@ $^
 	
 $(LIBDIR)/libsameboy.$(DL_EXT): $(CORE_OBJECTS)
@@ -898,7 +976,7 @@ endif
 
 $(PKGCONF_FILE): sameboy.pc.in
 	-@$(MKDIR) -p $(dir $@)
-	-@rm -f $@
+	-@$(RM) -f $@
 	sed -e 's,@prefix@,$(PREFIX),' \
 		-e 's/@version@/$(VERSION)/' $< > $@
 
@@ -940,6 +1018,6 @@ $(OBJ)/Windows/msvcrt.lib: Windows/msvcrt.def
 	
 # Clean
 clean:
-	rm -rf build
+	$(RM) -rf build
 
 .PHONY: libretro tester cocoa ios _ios ios-ipa ios-deb liblib-unsupported bootroms

@@ -567,8 +567,8 @@ static void *vfs_read_boot_rom(const char *path)
     
     void *buffer = malloc(0x900);
     memset(buffer, 0xFF, 0x900);
-    ssize_t read = vfs_interface->read(file, buffer, 0x900);
-    vfs_interface->close(file);
+    ssize_t read = (vfs_interface->read)(file, buffer, 0x900);
+    (vfs_interface->close)(file);
     
     if (read < 0) {
         free(buffer);

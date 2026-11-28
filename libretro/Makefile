@@ -55,7 +55,11 @@ endif
 CORE_DIR     = ..
 
 TARGET_NAME  = sameboy
+ifneq ($(findstring windows32,$(shell uname -s)),)
+LIBM         = 
+else
 LIBM         = -lm
+endif
 
 
 ifneq ($(SANITIZER),)
@@ -350,6 +354,10 @@ include Makefile.common
 
 CFLAGS += -DGB_VERSION=\"$(VERSION)\" -DGB_COPYRIGHT_YEAR=\"$(COPYRIGHT_YEAR)\"
 
+ifeq ($(IN_CMD_EXE),1)
+SOURCES_C += $(CORE_DIR)/Windows/stdio.c
+endif
+
 OBJECTS := $(patsubst $(CORE_DIR)/%.c,$(CORE_DIR)/build/obj/%_libretro.c.o,$(SOURCES_C))
 
 OBJOUT   = -o
@@ -373,17 +381,29 @@ CFLAGS   += -D__LIBRETRO__ $(fpic) $(INCFLAGS) -std=gnu11 -D_GNU_SOURCE -D_USE_M
 all: $(TARGET)
 
 $(CORE_DIR)/libretro/%_boot.c: $(BOOTROMS_DIR)/%_boot.bin
+ifeq ($(IN_CMD_EXE),1)
+	echo /* AUTO-GENERATED */ > $@
+	echo const unsigned char $(notdir $(@:%.c=%))[] = { >> $@
+else
 	echo "/* AUTO-GENERATED */" > $@
 	echo "const unsigned char $(notdir $(@:%.c=%))[] = {" >> $@
+endif
 ifneq ($(findstring Haiku,$(shell uname -s)),)
 	# turns out od is posix, hexdump is not hence is less portable
 	# this is still rather ugly and could be done better I guess
 	od -A none -t x1 -v $< | sed -e 's/^\ /0x/' -e 's/\ /,\ 0x/g' -e 's/$$/,/g' | tr '\n' ' ' >> $@
+else ifeq ($(IN_CMD_EXE),1)
+	od -A none -t x1 -v $< | sed -e "s/^\ /0x/" -e "s/\ /,\ 0x/g" -e "s/$$/,/g" | tr "\n" " " >> $@
 else
 	hexdump -v -e '/1 "0x%02x, "' $< >> $@
 endif
+ifeq ($(IN_CMD_EXE),1)
+	echo }; >> $@
+	echo const unsigned $(notdir $(@:%.c=%))_length = sizeof($(notdir $(@:%.c=%))); >> $@
+else
 	echo "};" >> $@
 	echo "const unsigned $(notdir $(@:%.c=%))_length = sizeof($(notdir $(@:%.c=%)));" >> $@
+endif
 
 $(abspath $(CORE_DIR))/build/bin/BootROMs/%_boot.bin:
 	$(MAKE) -C $(CORE_DIR) $@
